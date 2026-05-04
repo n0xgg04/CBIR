@@ -1,0 +1,56 @@
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.python-version
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node ---
+node_modules/
+.next/
+out/
+.yarn/cache/
+.yarn/install-state.gz
+.pnp.*
+yarn-error.log
+npm-debug.log*
+
+# --- Testing ---
+playwright-report/
+test-results/
+coverage/
+playwright/.cache/
+
+# --- Project ---
+.env
+.env.local
+.env.*.local
+storage/originals/
+storage/plots/
+data/
+backend/alembic/versions/__pycache__/
+
+# --- Docker ---
+*.log
+
+# --- OMC working state ---
+.omc/state/
+.omc/logs/
+.omc/research/
+
+.omc
+.claude

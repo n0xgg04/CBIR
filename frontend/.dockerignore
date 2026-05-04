@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+.yarn
+.pnp.*
+yarn-error.log
+npm-debug.log*
+playwright-report
+test-results
+.env
+.env.*
+**/.DS_Store
