@@ -28,7 +28,7 @@ EXPECTED_DIMS: Final[dict[str, int]] = {
 }
 
 # Bumped whenever any extractor's parameters/normalisation change.
-EXTRACTOR_VERSION: Final[str] = "v1.0"
+EXTRACTOR_VERSION: Final[str] = "v1.1"
 
 
 def extract_all(img: np.ndarray) -> dict[str, np.ndarray]:

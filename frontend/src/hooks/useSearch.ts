@@ -6,6 +6,7 @@ import {
   type SearchResponse,
   rerankSearch,
   searchImages,
+  visualizeQueryFeature,
 } from "@/lib/api";
 import { copyDefaultWeights } from "@/lib/weights";
 
@@ -15,6 +16,7 @@ export interface SearchState {
   phase: SearchPhase;
   response: SearchResponse | null;
   preview: string | null;
+  preprocessUrl: string | null;
   weights: Record<string, number>;
   error: string | null;
   /** Last query file kept so the user can re-query without re-dropping. */
@@ -27,6 +29,7 @@ const INITIAL_STATE: SearchState = {
   phase: "idle",
   response: null,
   preview: null,
+  preprocessUrl: null,
   weights: copyDefaultWeights(),
   error: null,
   queryFile: null,
@@ -55,24 +58,33 @@ export function useSearch(): UseSearchApi {
         if (prev.preview) {
           URL.revokeObjectURL(prev.preview);
         }
+        if (prev.preprocessUrl) {
+          URL.revokeObjectURL(prev.preprocessUrl);
+        }
         return {
           ...prev,
           phase: "searching",
           response: null,
           preview,
+          preprocessUrl: null,
           error: null,
           queryFile: file,
         };
       });
       try {
-        const response = await searchImages(file, {
-          topK: state.topN,
-          weights: state.weights,
-        });
+        const [response, preprocBlob] = await Promise.all([
+          searchImages(file, {
+            topK: state.topN,
+            weights: state.weights,
+          }),
+          visualizeQueryFeature(file, "preprocess"),
+        ]);
+        const preprocessUrl = URL.createObjectURL(preprocBlob);
         setState((prev) => ({
           ...prev,
           phase: "ready",
           response,
+          preprocessUrl,
           weights: { ...response.weights },
           error: null,
         }));
@@ -131,6 +143,9 @@ export function useSearch(): UseSearchApi {
     setState((prev) => {
       if (prev.preview) {
         URL.revokeObjectURL(prev.preview);
+      }
+      if (prev.preprocessUrl) {
+        URL.revokeObjectURL(prev.preprocessUrl);
       }
       return {
         ...INITIAL_STATE,

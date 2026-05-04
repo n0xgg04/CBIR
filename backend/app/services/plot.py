@@ -222,3 +222,13 @@ def render(image_id: int, feature: str, img_bgr: np.ndarray, storage_root: str |
     if target.exists():
         return target.read_bytes()
     return _RENDERERS[feature](img_bgr, target)
+
+
+def render_query(feature: str, img_bgr: np.ndarray) -> bytes:
+    """Render `feature` for a transient query image (no disk cache)."""
+    if feature not in _RENDERERS:
+        raise KeyError(f"unknown plot: {feature!r}")
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dummy = Path(tmpdir) / "plot.png"
+        return _RENDERERS[feature](img_bgr, dummy)

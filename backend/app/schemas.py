@@ -145,3 +145,13 @@ class EvaluationResponse(BaseModel):
     report: EvaluationReportRead | None = None
     ablation: AblationReportRead | None = None
     elapsed_ms: int
+
+
+class CompareResponse(BaseModel):
+    """POST /api/v1/compare response."""
+
+    fused_score: float
+    per_feature: dict[str, float]
+    left_dims: dict[str, int]
+    right_dims: dict[str, int]
+    elapsed_ms: int

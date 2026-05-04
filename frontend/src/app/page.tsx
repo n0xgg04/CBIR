@@ -11,7 +11,10 @@ async function loadPing(): Promise<PingState> {
     const payload = await fetchPing();
     return { kind: "ok", payload };
   } catch (err) {
-    return { kind: "error", message: err instanceof Error ? err.message : String(err) };
+    return {
+      kind: "error",
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -20,9 +23,10 @@ export default async function Home() {
 
   return (
     <main className="mx-auto max-w-3xl p-12">
-      <h1 className="text-4xl font-bold tracking-tight">Animal Face CBIR</h1>
+      <h1 className="text-4xl font-bold tracking-tight">Nhóm 2</h1>
       <p className="mt-3 text-slate-600">
-        Tìm kiếm ảnh dựa trên nội dung (CBIR) cho ảnh mặt động vật sử dụng các đặc trưng thị giác máy tính thủ công.
+        Tìm kiếm ảnh dựa trên nội dung (CBIR) cho ảnh mặt động vật sử dụng các
+        đặc trưng.
       </p>
 
       <section
@@ -39,8 +43,8 @@ export default async function Home() {
         ) : (
           <p data-testid="api-status" className="mt-2 text-emerald-700">
             đang hoạt động — dịch vụ{" "}
-            <code className="font-mono">{state.payload.service}</code>{" "}
-            v<code className="font-mono">{state.payload.version}</code>
+            <code className="font-mono">{state.payload.service}</code> v
+            <code className="font-mono">{state.payload.version}</code>
           </p>
         )}
       </section>
@@ -51,14 +55,18 @@ export default async function Home() {
           className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-brand hover:shadow"
         >
           <h3 className="font-semibold">Tải ảnh lên</h3>
-          <p className="text-sm text-slate-600">Thêm ảnh mặt động vật vào kho dữ liệu.</p>
+          <p className="text-sm text-slate-600">
+            Thêm ảnh mặt động vật vào kho dữ liệu.
+          </p>
         </a>
         <a
           href="/search"
           className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-brand hover:shadow"
         >
           <h3 className="font-semibold">Chạy truy vấn</h3>
-          <p className="text-sm text-slate-600">Thả ảnh truy vấn và xem pipeline chạy.</p>
+          <p className="text-sm text-slate-600">
+            Thả ảnh truy vấn và xem pipeline chạy.
+          </p>
         </a>
       </section>
     </main>

@@ -115,6 +115,14 @@ export interface RerankOptions {
   topK?: number;
 }
 
+export interface CompareResponse {
+  fused_score: number;
+  per_feature: Record<string, number>;
+  left_dims: Record<string, number>;
+  right_dims: Record<string, number>;
+  elapsed_ms: number;
+}
+
 export interface EvaluateOptions {
   method?: "default" | "ablation";
   topK?: number;
@@ -145,6 +153,14 @@ export function visualizationUrl(
     process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1"
   ).replace(/\/$/, "");
   return `${base}/visualize/${imageId}/${feature}`;
+}
+
+/** Build a public URL for the original uploaded image bytes. */
+export function originalImageUrl(imageId: number): string {
+  const base = (
+    process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1"
+  ).replace(/\/$/, "");
+  return `${base}/images/${imageId}/raw`;
 }
 
 async function readError(response: Response): Promise<string> {
@@ -259,4 +275,36 @@ export async function evaluateCorpus(
   });
   await ensureOk(response);
   return (await response.json()) as EvaluationResponse;
+}
+
+export async function compareTwoImages(
+  left: File,
+  right: File,
+): Promise<CompareResponse> {
+  const form = new FormData();
+  form.append("left", left);
+  form.append("right", right);
+  const response = await fetch(apiUrl("/compare"), {
+    method: "POST",
+    body: form,
+  });
+  await ensureOk(response);
+  return (await response.json()) as CompareResponse;
+}
+
+export async function visualizeQueryFeature(
+  file: File,
+  feature: string = "preprocess",
+): Promise<Blob> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(
+    apiUrl(`/visualize/query?feature=${encodeURIComponent(feature)}`),
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+  await ensureOk(response);
+  return response.blob();
 }

@@ -20,7 +20,11 @@ const STEP = 0.05;
 const MIN = 0;
 const MAX = 1;
 
-export function WeightsPanel({ weights, disabled, onApply }: WeightsPanelProps) {
+export function WeightsPanel({
+  weights,
+  disabled,
+  onApply,
+}: WeightsPanelProps) {
   const initial = useMemo(() => {
     const merged: Record<FeatureName, number> = { ...DEFAULT_WEIGHTS };
     for (const name of FEATURE_LIST) {
@@ -35,7 +39,7 @@ export function WeightsPanel({ weights, disabled, onApply }: WeightsPanelProps) 
 
   const total = useMemo(
     () => FEATURE_LIST.reduce((sum, name) => sum + (draft[name] ?? 0), 0),
-    [draft],
+    [draft]
   );
 
   const apply = (): void => {
@@ -52,7 +56,10 @@ export function WeightsPanel({ weights, disabled, onApply }: WeightsPanelProps) 
       className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
     >
       <div className="flex items-baseline justify-between">
-        <h2 id="weights-heading" className="text-base font-semibold text-slate-800">
+        <h2
+          id="weights-heading"
+          className="text-base font-semibold text-slate-800"
+        >
           Trọng số
         </h2>
         <span
@@ -113,7 +120,7 @@ export function WeightsPanel({ weights, disabled, onApply }: WeightsPanelProps) 
           disabled={disabled}
           className="rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
         >
-          Xếp hạng lại
+          Tìm kiếm
         </button>
       </div>
     </section>

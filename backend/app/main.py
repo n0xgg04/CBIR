@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.routers import compare as compare_router
 from app.routers import evaluate as evaluate_router
 from app.routers import images as images_router
 from app.routers import search as search_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(visualize_router.router)
     app.include_router(ws_pipeline_router.router)
     app.include_router(evaluate_router.router)
+    app.include_router(compare_router.router)
 
     return app
 

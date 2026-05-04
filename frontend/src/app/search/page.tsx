@@ -15,24 +15,46 @@ interface TimelineRow {
   title: string;
   stageName: string;
   hint?: string;
+  featureName?: string;
 }
 
 const TIMELINE: TimelineRow[] = [
-  { index: 1, title: "Giải mã", stageName: "decode", hint: "Đọc bytes ảnh truy vấn → BGR." },
-  { index: 2, title: "Tiền xử lý", stageName: "preprocess", hint: "Resize 224×224, CLAHE, chuẩn hóa RGB." },
-  { index: 3, title: "Trích xuất đặc trưng", stageName: "extract", hint: "Cả 6 đặc trưng thủ công." },
+  {
+    index: 1,
+    title: "Giải mã",
+    stageName: "decode",
+    hint: "Đọc bytes ảnh truy vấn → BGR.",
+  },
+  {
+    index: 2,
+    title: "Tiền xử lý",
+    stageName: "preprocess",
+    hint: "Resize 224×224, CLAHE, chuẩn hóa RGB.",
+  },
+  {
+    index: 3,
+    title: "Trích xuất đặc trưng",
+    stageName: "extract",
+    hint: "Cả 6 đặc trưng thủ công.",
+  },
   ...FEATURE_LIST.map((name, idx) => ({
     index: 4 + idx,
     title: FEATURE_TITLE[name],
     stageName: `feature.${name}`,
     hint: undefined,
+    featureName: name,
   })),
-  { index: 10, title: "Rank", stageName: "rank", hint: "Cosine fuse → argsort top-K." },
+  {
+    index: 10,
+    title: "Rank",
+    stageName: "rank",
+    hint: "Cosine fuse → argsort top-K.",
+  },
 ];
 
 function pickStage(
   trace: SearchTraceStage[] | undefined,
-  name: string,
+  name: string
 ): SearchTraceStage | null {
   if (!trace) {
     return null;
@@ -42,7 +64,7 @@ function pickStage(
 
 export default function SearchPage() {
   const { state, runSearch, applyWeights, setTopN, reset } = useSearch();
-  const { phase, response, preview, weights, error, topN } = state;
+  const { phase, response, preview, preprocessUrl, weights, error, topN } = state;
 
   const busy = phase === "searching" || phase === "reranking";
 
@@ -69,15 +91,14 @@ export default function SearchPage() {
     <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6 lg:p-10">
       <header className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Giám sát Pipeline</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Truy vấn dữ liệu
+          </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Thả ảnh truy vấn. Xem từng giai đoạn của pipeline CBIR chạy trực tiếp.
+            Chọn ảnh để tìm kiếm theo mức độ tương đồng
           </p>
         </div>
-        <a
-          href="/"
-          className="text-sm text-slate-500 hover:text-slate-700"
-        >
+        <a href="/" className="text-sm text-slate-500 hover:text-slate-700">
           ← Trang chủ
         </a>
       </header>
@@ -87,7 +108,10 @@ export default function SearchPage() {
         className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
       >
         <div className="flex items-baseline justify-between">
-          <h2 id="query-heading" className="text-base font-semibold text-slate-800">
+          <h2
+            id="query-heading"
+            className="text-base font-semibold text-slate-800"
+          >
             Truy vấn
           </h2>
           {phase !== "idle" ? (
@@ -109,13 +133,42 @@ export default function SearchPage() {
           />
           <div className="flex min-h-[12rem] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3">
             {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={preview}
-                alt="Xem trước truy vấn"
-                data-testid="query-preview"
-                className="max-h-64 w-auto rounded-md object-contain"
-              />
+              <div className="flex w-full flex-col gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-center text-xs text-slate-500">Ảnh gốc</span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={preview}
+                      alt="Xem trước truy vấn"
+                      data-testid="query-preview"
+                      className="max-h-48 w-auto rounded-md object-contain mx-auto"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-center text-xs text-slate-500">Sau tiền xử lý</span>
+                    {preprocessUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={preprocessUrl}
+                        alt="Ảnh sau tiền xử lý"
+                        data-testid="query-preprocess"
+                        className="max-h-48 w-auto rounded-md object-contain mx-auto"
+                      />
+                    ) : (
+                      <div className="flex h-32 items-center justify-center">
+                        <span className="text-xs text-slate-400">Đang xử lý…</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {preprocessUrl ? (
+                  <div className="rounded-md bg-slate-100 p-2 text-xs text-slate-600">
+                    <strong className="text-slate-700">Các bước tiền xử lý:</strong>{" "}
+                    (1) Resize về 128×128; (2) Gaussian blur nhẹ (3×3); (3) CLAHE trên kênh L của LAB.
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <span className="text-sm text-slate-500">
                 Bản xem trước sẽ hiển thị khi bạn thả ảnh vào.
@@ -158,7 +211,7 @@ export default function SearchPage() {
             data-testid="search-status"
             className="text-sm text-slate-500"
           >
-            {phase === "reranking" ? "Đang xếp hạng lại…" : "Đang chạy pipeline…"}
+            {phase === "reranking" ? "Đang tìm kiếm..." : "Đang chạy..."}
           </p>
         ) : null}
       </section>
@@ -172,7 +225,7 @@ export default function SearchPage() {
             id="timeline-heading"
             className="text-base font-semibold text-slate-800"
           >
-            Dòng thờì gian pipeline
+            Bước xử lý
           </h2>
           <ol className="flex flex-col gap-3">
             {TIMELINE.map((row) => (
@@ -182,6 +235,8 @@ export default function SearchPage() {
                   title={row.title}
                   stage={pickStage(response?.pipeline_trace, row.stageName)}
                   hint={row.hint}
+                  featureName={row.featureName}
+                  queryFile={state.queryFile}
                 />
               </li>
             ))}
@@ -235,10 +290,7 @@ export default function SearchPage() {
             ) : null}
           </div>
         </div>
-        <ResultGrid
-          results={response?.results ?? []}
-          queryPreview={preview}
-        />
+        <ResultGrid results={response?.results ?? []} queryPreview={preview} />
       </section>
     </main>
   );

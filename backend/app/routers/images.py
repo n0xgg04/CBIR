@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import Path as PathParam
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -121,3 +122,39 @@ async def upload_image(
         image=ImageRead.model_validate(image_row),
         features=FeatureSetRead.model_validate(feature_row),
     )
+
+
+@router.get(
+    "/images/{image_id}/raw",
+    response_class=Response,
+    responses={
+        200: {"content": {"image/*": {}}},
+        404: {"description": "Image not found"},
+    },
+)
+async def get_raw_image(
+    image_id: Annotated[int, PathParam(ge=1)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    img = await db.get(Image, image_id)
+    if img is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"image {image_id} not found")
+    storage = _build_storage(settings)
+    absolute = storage.absolute(img.storage_path)
+    if not absolute.exists():
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"file not found on disk: {img.storage_path}"
+        )
+    data = absolute.read_bytes()
+    ext = absolute.suffix.lstrip(".").lower()
+    media_type = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "bmp": "image/bmp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+    }.get(ext, "application/octet-stream")
+    return Response(content=data, media_type=media_type)
