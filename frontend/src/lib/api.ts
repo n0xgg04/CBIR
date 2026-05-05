@@ -289,6 +289,13 @@ export async function compareTwoImages(
   return (await response.json()) as CompareResponse;
 }
 
+export async function invalidateCache(): Promise<void> {
+  const response = await fetch(apiUrl("/admin/cache/invalidate"), {
+    method: "POST",
+  });
+  await ensureOk(response);
+}
+
 export async function visualizeQueryFeature(
   file: File,
   feature: string = "preprocess",

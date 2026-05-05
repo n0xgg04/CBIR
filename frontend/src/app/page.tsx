@@ -1,3 +1,4 @@
+import CacheInvalidateButton from "@/components/CacheInvalidateButton";
 import { fetchPing, type PingResponse } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,8 @@ export default async function Home() {
           </p>
         </a>
       </section>
+
+      <CacheInvalidateButton />
     </main>
   );
 }
