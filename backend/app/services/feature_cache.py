@@ -40,7 +40,7 @@ class FeatureMatrices:
 
 _FEATURE_NAMES: Final[tuple[str, ...]] = tuple(feat.EXPECTED_DIMS.keys())
 
-BRUTE_FORCE_THRESHOLD: int = 5_000  # rows; below this, use in-memory cache
+BRUTE_FORCE_THRESHOLD: int = 0  # always use ANN (pgvector HNSW); in-memory cache disabled
 
 _lock: asyncio.Lock = asyncio.Lock()
 _cached: FeatureMatrices | None = None
