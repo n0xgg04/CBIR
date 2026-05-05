@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Final
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FeatureSet
@@ -40,6 +40,8 @@ class FeatureMatrices:
 
 _FEATURE_NAMES: Final[tuple[str, ...]] = tuple(feat.EXPECTED_DIMS.keys())
 
+BRUTE_FORCE_THRESHOLD: int = 5_000  # rows; below this, use in-memory cache
+
 _lock: asyncio.Lock = asyncio.Lock()
 _cached: FeatureMatrices | None = None
 _dirty: bool = True
@@ -49,6 +51,11 @@ def mark_dirty() -> None:
     """Flag the cache for rebuild on next access. Cheap; no IO."""
     global _dirty
     _dirty = True
+
+
+async def _count_corpus(session: AsyncSession) -> int:
+    result = await session.execute(select(func.count(FeatureSet.image_id)))
+    return int(result.scalar_one())
 
 
 def _empty_snapshot() -> FeatureMatrices:
@@ -72,9 +79,10 @@ def _build_snapshot(rows: list[FeatureSet]) -> FeatureMatrices:
     matrices: dict[str, np.ndarray] = {}
     for name in _FEATURE_NAMES:
         expected_dim = feat.EXPECTED_DIMS[name]
+        col_name = f"vec_{name}"
         stacked = np.zeros((len(rows), expected_dim), dtype=np.float32)
         for i, row in enumerate(rows):
-            vec = row.vectors.get(name)
+            vec = getattr(row, col_name)
             if vec is None:
                 raise ValueError(
                     f"feature_set image_id={row.image_id} missing vector '{name}'"
@@ -101,16 +109,30 @@ async def _load(session: AsyncSession) -> FeatureMatrices:
     return _build_snapshot(rows)
 
 
-async def get_matrices(session: AsyncSession) -> FeatureMatrices:
+async def get_matrices(session: AsyncSession) -> FeatureMatrices | None:
     """Return a process-cached snapshot, rebuilding it if dirty.
+
+    Returns ``None`` when the corpus exceeds ``BRUTE_FORCE_THRESHOLD`` so that
+    callers fall back to the pgvector ANN path instead of loading everything
+    into RAM.
+
+    Automatically invalidates the cache when the corpus size changes so that
+    seeding or deletion in another process is picked up on the next request.
 
     Callers receive an immutable view; mutation of the returned arrays would
     poison subsequent searches and is not supported.
     """
     global _cached, _dirty
+    corpus_size = await _count_corpus(session)
+    if corpus_size > BRUTE_FORCE_THRESHOLD:
+        return None
+    if _cached is not None and not _dirty and _cached.size != corpus_size:
+        mark_dirty()
     if _cached is not None and not _dirty:
         return _cached
     async with _lock:
+        if _cached is not None and not _dirty and _cached.size != corpus_size:
+            mark_dirty()
         if _cached is not None and not _dirty:
             return _cached
         _cached = await _load(session)

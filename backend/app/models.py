@@ -21,6 +21,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:  # pragma: no cover – SQLite test fallback
+    Vector = None  # type: ignore[misc,assignment]
+
 
 class Base(DeclarativeBase):
     """Project-wide declarative base."""
@@ -75,14 +80,27 @@ class FeatureSet(Base):
         ForeignKey("images.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    vectors: Mapped[dict[str, list[float]]] = mapped_column(JsonField, nullable=False)
-    dims: Mapped[dict[str, int]] = mapped_column(JsonField, nullable=False)
-    extracted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
     extractor_ver: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # pgvector typed columns
+    vec_hog: Mapped[list[float] | None] = mapped_column(
+        Vector(8100) if Vector is not None else JSON(), nullable=True
+    )
+    vec_hsv: Mapped[list[float] | None] = mapped_column(
+        Vector(768) if Vector is not None else JSON(), nullable=True
+    )
+    vec_lbp: Mapped[list[float] | None] = mapped_column(
+        Vector(18) if Vector is not None else JSON(), nullable=True
+    )
+    vec_glcm: Mapped[list[float] | None] = mapped_column(
+        Vector(40) if Vector is not None else JSON(), nullable=True
+    )
+    vec_hu: Mapped[list[float] | None] = mapped_column(
+        Vector(7) if Vector is not None else JSON(), nullable=True
+    )
+    vec_cm: Mapped[list[float] | None] = mapped_column(
+        Vector(9) if Vector is not None else JSON(), nullable=True
+    )
 
     image: Mapped[Image] = relationship(back_populates="feature_set")
 

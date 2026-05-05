@@ -17,7 +17,8 @@ from typing import Final
 
 import numpy as np
 
-from app.services import feature_cache
+from app.models import FeatureSet
+from app.services import feature_cache, vector_search
 from app.services import features as feat
 from app.services.feature_cache import FeatureMatrices
 from app.services.pipeline_emitter import PipelineEmitter
@@ -78,6 +79,7 @@ class SearchOutcome:
     elapsed_ms: int
     query_dims: dict[str, int]
     corpus_size: int
+    image_ids: tuple[int, ...]
 
 
 def _cosine_per_feature(
@@ -185,6 +187,119 @@ def rerank_from_persisted(
     return results
 
 
+async def _ann_search(
+    session,
+    query_vectors: dict[str, np.ndarray],
+    weights: dict[str, float],
+    top_k: int,
+    emitter: PipelineEmitter | None = None,
+) -> tuple[list[SearchResult], dict[str, np.ndarray], tuple[int, ...], int, list[TraceStage]]:
+    """ANN path: pgvector HNSW per-feature candidates → weighted fusion → top-K."""
+    trace: list[TraceStage] = []
+
+    # Stage: corpus snapshot (ANN — no cache load)
+    if emitter is not None:
+        await emitter.emit("stage.start", {"name": "load_corpus"})
+    cache_started = time.perf_counter()
+    # ANN path bypasses the in-memory cache; we just count corpus for the trace.
+    from sqlalchemy import func as sql_func
+    from sqlalchemy import select
+
+    count_result = await session.execute(select(sql_func.count(FeatureSet.image_id)))
+    corpus_size = int(count_result.scalar_one())
+    cache_elapsed_ms = int((time.perf_counter() - cache_started) * 1000)
+    trace.append(
+        TraceStage(
+            name="load_corpus",
+            elapsed_ms=cache_elapsed_ms,
+            detail={"corpus_size": corpus_size, "mode": "ann"},
+        )
+    )
+    if emitter is not None:
+        await emitter.emit(
+            "stage.done",
+            {
+                "name": "load_corpus",
+                "elapsed_ms": cache_elapsed_ms,
+                "corpus_size": corpus_size,
+            },
+        )
+
+    # Stage: per-feature ANN
+    if emitter is not None:
+        await emitter.emit("stage.start", {"name": "cosine"})
+    sims_started = time.perf_counter()
+    candidates = await vector_search.ann_candidates(session, query_vectors)
+    sims_elapsed_ms = int((time.perf_counter() - sims_started) * 1000)
+
+    # Convert candidates dict → per_feature_sims arrays for _fuse / persistence
+    all_ids = sorted({iid for cands in candidates.values() for iid in cands})
+    id_to_idx = {iid: i for i, iid in enumerate(all_ids)}
+    N = len(all_ids)
+
+    per_feature_sims: dict[str, np.ndarray] = {}
+    for name, cands in candidates.items():
+        arr = np.zeros(N, dtype=np.float32)
+        for iid, sim in cands.items():
+            arr[id_to_idx[iid]] = sim
+        per_feature_sims[name] = arr
+
+    trace.append(
+        TraceStage(
+            name="cosine",
+            elapsed_ms=sims_elapsed_ms,
+            detail={name: len(cands) for name, cands in candidates.items()},
+        )
+    )
+    if emitter is not None:
+        await emitter.emit(
+            "stage.done",
+            {"name": "cosine", "elapsed_ms": sims_elapsed_ms},
+        )
+
+    # Stage: fuse + rank
+    if emitter is not None:
+        await emitter.emit("stage.start", {"name": "rank"})
+    rank_started = time.perf_counter()
+    fused = _fuse(per_feature_sims, weights)
+    indices = _top_k_indices(fused, top_k)
+
+    results: list[SearchResult] = []
+    for rank, idx in enumerate(indices.tolist(), start=1):
+        per_feature = {
+            name: float(per_feature_sims[name][idx]) for name in per_feature_sims
+        }
+        results.append(
+            SearchResult(
+                image_id=int(all_ids[idx]),
+                score=float(fused[idx]),
+                rank=rank,
+                per_feature=per_feature,
+            )
+        )
+    rank_elapsed_ms = int((time.perf_counter() - rank_started) * 1000)
+    if emitter is not None:
+        for r in results:
+            await emitter.emit(
+                "rank.tick",
+                {"rank": r.rank, "image_id": r.image_id, "score": r.score},
+            )
+    trace.append(
+        TraceStage(
+            name="rank",
+            elapsed_ms=rank_elapsed_ms,
+            detail={"top_k": len(results), "weights": weights},
+        )
+    )
+    if emitter is not None:
+        await emitter.emit(
+            "stage.done",
+            {"name": "rank", "elapsed_ms": rank_elapsed_ms},
+        )
+
+    return results, per_feature_sims, tuple(all_ids), corpus_size, trace
+
+
 def parse_persisted_sub_scores(
     pipeline_trace: list[dict[str, object]] | None,
 ) -> tuple[list[int], dict[str, np.ndarray]] | None:
@@ -283,102 +398,121 @@ async def run_search(
             {"name": "extract", "elapsed_ms": extract_elapsed_ms},
         )
 
-    # Stage: corpus snapshot
-    if emitter is not None:
-        await emitter.emit("stage.start", {"name": "load_corpus"})
-    cache_started = time.perf_counter()
+    # Stage: corpus snapshot + cosine + rank (dispatch brute-force vs ANN)
     snapshot = await feature_cache.get_matrices(session)
-    cache_elapsed_ms = int((time.perf_counter() - cache_started) * 1000)
-    trace.append(
-        TraceStage(
-            name="load_corpus",
-            elapsed_ms=cache_elapsed_ms,
-            detail={"corpus_size": snapshot.size},
-        )
-    )
-    if emitter is not None:
-        await emitter.emit(
-            "stage.done",
-            {
-                "name": "load_corpus",
-                "elapsed_ms": cache_elapsed_ms,
-                "corpus_size": snapshot.size,
-            },
-        )
-
-    # Stage: per-feature cosine
-    if emitter is not None:
-        await emitter.emit("stage.start", {"name": "cosine"})
-    sims_started = time.perf_counter()
-    per_feature_sims: dict[str, np.ndarray] = {}
-    for name, matrix in snapshot.matrices.items():
+    if snapshot is not None:
+        # Brute-force path (corpus ≤ BRUTE_FORCE_THRESHOLD)
         if emitter is not None:
-            await emitter.emit("feature.start", {"name": name, "stage": "cosine"})
-        feat_started = time.perf_counter()
-        q = np.asarray(query_vectors[name], dtype=np.float32)
-        if matrix.shape[0] == 0:
-            per_feature_sims[name] = np.zeros((0,), dtype=np.float32)
-        else:
-            per_feature_sims[name] = (matrix @ q).astype(np.float32)
-        feat_elapsed_ms = int((time.perf_counter() - feat_started) * 1000)
+            await emitter.emit("stage.start", {"name": "load_corpus"})
+        cache_started = time.perf_counter()
+        cache_elapsed_ms = int((time.perf_counter() - cache_started) * 1000)
+        trace.append(
+            TraceStage(
+                name="load_corpus",
+                elapsed_ms=cache_elapsed_ms,
+                detail={"corpus_size": snapshot.size, "mode": "brute_force"},
+            )
+        )
         if emitter is not None:
             await emitter.emit(
-                "feature.done",
+                "stage.done",
                 {
-                    "name": name,
-                    "stage": "cosine",
-                    "elapsed_ms": feat_elapsed_ms,
-                    "rows": int(per_feature_sims[name].size),
+                    "name": "load_corpus",
+                    "elapsed_ms": cache_elapsed_ms,
+                    "corpus_size": snapshot.size,
                 },
             )
-    sims_elapsed_ms = int((time.perf_counter() - sims_started) * 1000)
-    trace.append(
-        TraceStage(
-            name="cosine",
-            elapsed_ms=sims_elapsed_ms,
-            detail={name: sims.size for name, sims in per_feature_sims.items()},
-        )
-    )
-    if emitter is not None:
-        await emitter.emit(
-            "stage.done",
-            {"name": "cosine", "elapsed_ms": sims_elapsed_ms},
-        )
 
-    # Stage: fuse + rank
-    if emitter is not None:
-        await emitter.emit("stage.start", {"name": "rank"})
-    rank_started = time.perf_counter()
-    fused = _fuse(per_feature_sims, cleaned_weights)
-    results = assemble_results(snapshot, per_feature_sims, fused, top_k)
-    rank_elapsed_ms = int((time.perf_counter() - rank_started) * 1000)
-    if emitter is not None:
-        for r in results:
-            await emitter.emit(
-                "rank.tick",
-                {"rank": r.rank, "image_id": r.image_id, "score": r.score},
+        if emitter is not None:
+            await emitter.emit("stage.start", {"name": "cosine"})
+        sims_started = time.perf_counter()
+        per_feature_sims: dict[str, np.ndarray] = {}
+        for name, matrix in snapshot.matrices.items():
+            if emitter is not None:
+                await emitter.emit("feature.start", {"name": name, "stage": "cosine"})
+            feat_started = time.perf_counter()
+            q = np.asarray(query_vectors[name], dtype=np.float32)
+            if matrix.shape[0] == 0:
+                per_feature_sims[name] = np.zeros((0,), dtype=np.float32)
+            else:
+                per_feature_sims[name] = (matrix @ q).astype(np.float32)
+            feat_elapsed_ms = int((time.perf_counter() - feat_started) * 1000)
+            if emitter is not None:
+                await emitter.emit(
+                    "feature.done",
+                    {
+                        "name": name,
+                        "stage": "cosine",
+                        "elapsed_ms": feat_elapsed_ms,
+                        "rows": int(per_feature_sims[name].size),
+                    },
+                )
+        sims_elapsed_ms = int((time.perf_counter() - sims_started) * 1000)
+        trace.append(
+            TraceStage(
+                name="cosine",
+                elapsed_ms=sims_elapsed_ms,
+                detail={name: sims.size for name, sims in per_feature_sims.items()},
             )
-    trace.append(
-        TraceStage(
-            name="rank",
-            elapsed_ms=rank_elapsed_ms,
-            detail={"top_k": len(results), "weights": cleaned_weights},
         )
-    )
-    if emitter is not None:
-        await emitter.emit(
-            "stage.done",
-            {"name": "rank", "elapsed_ms": rank_elapsed_ms},
+        if emitter is not None:
+            await emitter.emit(
+                "stage.done",
+                {"name": "cosine", "elapsed_ms": sims_elapsed_ms},
+            )
+
+        if emitter is not None:
+            await emitter.emit("stage.start", {"name": "rank"})
+        rank_started = time.perf_counter()
+        fused = _fuse(per_feature_sims, cleaned_weights)
+        results = assemble_results(snapshot, per_feature_sims, fused, top_k)
+        rank_elapsed_ms = int((time.perf_counter() - rank_started) * 1000)
+        if emitter is not None:
+            for r in results:
+                await emitter.emit(
+                    "rank.tick",
+                    {"rank": r.rank, "image_id": r.image_id, "score": r.score},
+                )
+        trace.append(
+            TraceStage(
+                name="rank",
+                elapsed_ms=rank_elapsed_ms,
+                detail={"top_k": len(results), "weights": cleaned_weights},
+            )
         )
+        if emitter is not None:
+            await emitter.emit(
+                "stage.done",
+                {"name": "rank", "elapsed_ms": rank_elapsed_ms},
+            )
+
+        corpus_size = snapshot.size
+    else:
+        # ANN path (corpus > BRUTE_FORCE_THRESHOLD)
+        ann_results, per_feature_sims, ann_image_ids, corpus_size, ann_trace = await _ann_search(
+            session,
+            query_vectors,
+            cleaned_weights,
+            top_k,
+            emitter=emitter,
+        )
+        results = ann_results
+        image_ids = ann_image_ids
+        trace.extend(ann_trace)
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
+    # Determine image_ids for the sub-score stash
+    if snapshot is not None:
+        image_ids = snapshot.image_ids
+
     outcome = SearchOutcome(
         results=results,
         weights=cleaned_weights,
         trace=trace,
         elapsed_ms=elapsed_ms,
         query_dims={name: int(vec.size) for name, vec in query_vectors.items()},
-        corpus_size=snapshot.size,
+        corpus_size=corpus_size,
+        image_ids=image_ids,
     )
     if emitter is not None:
         await emitter.emit(
@@ -418,7 +552,8 @@ def results_to_jsonable(results: list[SearchResult]) -> list[dict[str, object]]:
 
 
 def per_feature_sims_to_jsonable(
-    snapshot: FeatureMatrices, per_feature_sims: dict[str, np.ndarray]
+    image_ids: tuple[int, ...] | list[int],
+    per_feature_sims: dict[str, np.ndarray],
 ) -> dict[str, object]:
     """Serialise corpus indexing + per-feature scores for cheap re-ranks.
 
@@ -427,7 +562,7 @@ def per_feature_sims_to_jsonable(
     redoing extraction or cosine math.
     """
     return {
-        "image_ids": list(snapshot.image_ids),
+        "image_ids": list(image_ids),
         "scores": {
             name: sims.astype(float).tolist()
             for name, sims in per_feature_sims.items()

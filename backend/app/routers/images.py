@@ -106,9 +106,13 @@ async def upload_image(
     vectors = feat.extract_all(preprocessed)
     feature_row = FeatureSet(
         image_id=image_row.id,
-        vectors=feat.vectors_to_lists(vectors),
-        dims=dict(feat.EXPECTED_DIMS),
         extractor_ver=feat.EXTRACTOR_VERSION,
+        vec_hog=vectors["hog"].astype(float).tolist(),
+        vec_hsv=vectors["hsv"].astype(float).tolist(),
+        vec_lbp=vectors["lbp"].astype(float).tolist(),
+        vec_glcm=vectors["glcm"].astype(float).tolist(),
+        vec_hu=vectors["hu"].astype(float).tolist(),
+        vec_cm=vectors["cm"].astype(float).tolist(),
     )
     db.add(feature_row)
     await db.commit()
@@ -122,6 +126,15 @@ async def upload_image(
         image=ImageRead.model_validate(image_row),
         features=FeatureSetRead.model_validate(feature_row),
     )
+
+
+@router.post(
+    "/admin/cache/invalidate",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Drop the in-memory feature matrix cache so the next search rebuilds it.",
+)
+async def invalidate_feature_cache() -> None:
+    feature_cache.mark_dirty()
 
 
 @router.get(

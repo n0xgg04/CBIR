@@ -94,7 +94,7 @@ async def search_images(
         decoded = decode_bgr(payload)
     except ValueError as exc:
         raise HTTPException(
-            status.HTTP_400_REQUEST_ENTITY_TOO_LARGE, f"invalid image: {exc}"
+            status.HTTP_400_BAD_REQUEST, f"invalid image: {exc}"
         ) from exc
     decode_elapsed_ms = int((time.perf_counter() - decode_started) * 1000)
 
@@ -138,9 +138,7 @@ async def search_images(
         *search_engine.trace_to_jsonable(outcome.trace),
     ]
     sub_scores = search_engine.per_feature_sims_to_jsonable(
-        # snapshot.image_ids comes from the cache; rebuild via run_search side-effect
-        # by piggybacking the sims dict + a fresh fetch of image_ids in the same call.
-        await search_engine.feature_cache.get_matrices(db),
+        outcome.image_ids,
         per_feature_sims,
     )
     pipeline_trace_jsonable.append(

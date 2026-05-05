@@ -138,7 +138,7 @@ async def load_labeled_snapshot(session: AsyncSession) -> LabeledSnapshot:
         expected_dim = feat.EXPECTED_DIMS[name]
         stacked = np.zeros((len(rows), expected_dim), dtype=np.float32)
         for i, row in enumerate(rows):
-            vec = row[0].vectors.get(name)
+            vec = getattr(row[0], f"vec_{name}")
             if vec is None:
                 raise ValueError(
                     f"feature_set image_id={row[0].image_id} missing vector '{name}'"

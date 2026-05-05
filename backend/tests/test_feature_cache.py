@@ -71,11 +71,16 @@ async def _seed_image(session: AsyncSession, sha_suffix: str) -> int:
     )
     session.add(img)
     await session.flush()
+    vectors = _fake_vectors()
     fs = FeatureSet(
         image_id=img.id,
-        vectors=_fake_vectors(),
-        dims=dict(feat.EXPECTED_DIMS),
         extractor_ver=feat.EXTRACTOR_VERSION,
+        vec_hog=vectors["hog"],
+        vec_hsv=vectors["hsv"],
+        vec_lbp=vectors["lbp"],
+        vec_glcm=vectors["glcm"],
+        vec_hu=vectors["hu"],
+        vec_cm=vectors["cm"],
     )
     session.add(fs)
     await session.commit()

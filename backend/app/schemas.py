@@ -30,9 +30,6 @@ class FeatureSetRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     image_id: int
-    vectors: dict[str, list[float]]
-    dims: dict[str, int]
-    extracted_at: datetime
     extractor_ver: str
 
 

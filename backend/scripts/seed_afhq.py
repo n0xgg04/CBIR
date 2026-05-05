@@ -161,9 +161,13 @@ async def _ingest_one(
     vectors = feat.extract_all(preprocessed)
     feature_row = FeatureSet(
         image_id=image_row.id,
-        vectors=feat.vectors_to_lists(vectors),
-        dims=dict(feat.EXPECTED_DIMS),
         extractor_ver=feat.EXTRACTOR_VERSION,
+        vec_hog=vectors["hog"].astype(float).tolist(),
+        vec_hsv=vectors["hsv"].astype(float).tolist(),
+        vec_lbp=vectors["lbp"].astype(float).tolist(),
+        vec_glcm=vectors["glcm"].astype(float).tolist(),
+        vec_hu=vectors["hu"].astype(float).tolist(),
+        vec_cm=vectors["cm"].astype(float).tolist(),
     )
     session.add(feature_row)
     await session.commit()

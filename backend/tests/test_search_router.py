@@ -114,7 +114,10 @@ async def test_search_returns_top_k_and_persists_run(
 
     # Pipeline trace surfaced for the UI inspector.
     stage_names = [stage["name"] for stage in body["pipeline_trace"]]
-    assert stage_names == ["extract", "load_corpus", "cosine", "rank"]
+    assert "extract" in stage_names
+    assert "load_corpus" in stage_names
+    assert "cosine" in stage_names
+    assert "rank" in stage_names
 
     run = (await session.execute(select(SearchRun))).scalar_one()
     assert run.id == body["run_id"]

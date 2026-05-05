@@ -6,7 +6,7 @@
  */
 
 const INTERNAL_BASE =
-  process.env.INTERNAL_API_BASE ?? "http://backend:8000/api/v1";
+  process.env.INTERNAL_API_BASE ?? "http://localhost:8000/api/v1";
 const PUBLIC_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
 
@@ -40,9 +40,6 @@ export interface ImageRead {
 
 export interface FeatureSetRead {
   image_id: number;
-  vectors: Record<string, number[]>;
-  dims: Record<string, number>;
-  extracted_at: string;
   extractor_ver: string;
 }
 

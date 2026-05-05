@@ -92,10 +92,6 @@ async def test_post_images_creates_image_and_feature_set(
     assert image_payload["storage_path"].startswith("originals/cat/")
     assert image_payload["storage_path"].endswith(".jpg")
 
-    assert set(feature_payload["vectors"].keys()) == set(feat.EXPECTED_DIMS.keys())
-    for name, dim in feat.EXPECTED_DIMS.items():
-        assert len(feature_payload["vectors"][name]) == dim
-        assert feature_payload["dims"][name] == dim
     assert feature_payload["extractor_ver"] == feat.EXTRACTOR_VERSION
 
     # DB-side assertions: exactly one image and one feature_set row.
@@ -109,7 +105,6 @@ async def test_post_images_creates_image_and_feature_set(
     assert image_row.id == image_payload["id"]
     assert feature_row.image_id == image_row.id
     assert feature_row.extractor_ver == feat.EXTRACTOR_VERSION
-    assert set(feature_row.dims) == set(feat.EXPECTED_DIMS.keys())
 
 
 @pytest.mark.asyncio

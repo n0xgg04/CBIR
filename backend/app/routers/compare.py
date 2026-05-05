@@ -15,7 +15,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from app.schemas import CompareResponse
 from app.services import features as feat
 from app.services.preprocess import decode_bgr, preprocess
-from app.services.search_engine import DEFAULT_WEIGHTS, normalise_weights
+from app.services.search_engine import normalise_weights
 
 router = APIRouter(prefix="/api/v1", tags=["compare"])
 
