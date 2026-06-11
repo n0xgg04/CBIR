@@ -39,8 +39,6 @@ playwright/.cache/
 .env
 .env.local
 .env.*.local
-storage/originals/
-storage/plots/
 data/
 backend/alembic/versions/__pycache__/
 

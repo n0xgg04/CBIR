@@ -24,13 +24,22 @@ from app.services.feature_cache import FeatureMatrices
 from app.services.pipeline_emitter import PipelineEmitter
 
 # Aligned with PLAN.md §11 — `cm` is the internal key for "colour moments".
+# Weights derived from ablation study (docs/REVIEW_SIMILARITY.md §6):
+#   HOG:  critical  — removing drops MAP by 0.140
+#   LBP:  useful    — removing drops MAP by 0.023
+#   GLCM: neutral   — removing drops MAP by 0.002
+#   CM:   neutral   — removing raises MAP by 0.005 (mild noise)
+#   Hu:   harmful   — removing raises MAP by 0.019 (noise)
+#   HSV:  harmful   — removing raises MAP by 0.199 (strong noise)
+# Color features (HSV, CM) hurt because fur color is uncorrelated
+# with species (golden retriever ≈ tiger in color, ≠ black poodle).
 DEFAULT_WEIGHTS: Final[dict[str, float]] = {
-    "hog": 0.25,
-    "hsv": 0.20,
-    "lbp": 0.15,
-    "glcm": 0.15,
-    "hu": 0.15,
-    "cm": 0.10,
+    "hog": 0.60,
+    "lbp": 0.25,
+    "glcm": 0.10,
+    "cm": 0.05,
+    "hu": 0.00,
+    "hsv": 0.00,
 }
 
 DEFAULT_TOP_K: Final[int] = 5

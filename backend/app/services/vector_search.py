@@ -20,7 +20,8 @@ FEATURE_COLS: dict[str, str] = {
     "cm": "vec_cm",
 }
 
-DEFAULT_CANDIDATE_K: int = 50  # ANN over-fetch factor; tune upward if recall drops
+DEFAULT_CANDIDATE_K: int = 200  # Raised from 50 after evaluation showed features
+# like LBP rank ~1800 for valid matches; see docs/REVIEW_SIMILARITY.md §5.
 DEFAULT_EF_SEARCH: int = 40  # HNSW beam width at query time
 
 
