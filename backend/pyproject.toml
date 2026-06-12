@@ -32,6 +32,11 @@ dev = [
     "ruff>=0.7,<1",
     "aiosqlite>=0.20,<1",
 ]
+filter = [
+    "torch>=2.4,<3",
+    "transformers>=4.46,<5",
+    "safetensors>=0.4,<1",
+]
 
 [build-system]
 requires = ["hatchling"]
